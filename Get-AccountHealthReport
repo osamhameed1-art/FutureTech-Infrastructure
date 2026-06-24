@@ -1,0 +1,263 @@
+<#
+.SYNOPSIS
+    تقرير صحة الحسابات الشامل
+.DESCRIPTION
+    هذا الكود يقوم بإنشاء تقرير كامل عن صحة حسابات المستخدمين في Active Directory.
+    يصدر التقرير إلى ملف Excel وملف HTML يمكن فتحه في Word.
+    الوظائف التي يقوم بها:
+    1. البحث عن جميع الحسابات المعطلة في النطاق.
+    2. البحث عن جميع الحسابات المقفلة (محاولات دخول خاطئة).
+    3. البحث عن جميع الحسابات منتهية الصلاحية.
+    4. البحث عن جميع الحسابات غير النشطة (أكثر من 90 يوماً).
+    5. البحث عن جميع الحسابات النشطة (سجلت دخولها خلال آخر 90 يوماً).
+    6. البحث عن الحسابات التي لم تسجل دخولها أبداً (موظفين جدد لم يحضروا).
+    7. استخراج القسم لكل حساب من Active Directory.
+    8. عرض تحليل تفصيلي لكل فئة مع توصيات.
+    9. عرض توزيع المشاكل والنشطين حسب الأقسام.
+    10. تصدير التقرير إلى ملف Excel (CSV) لتحليل البيانات.
+    11. تصدير التقرير إلى ملف HTML منسق يمكن فتحه في Word.
+.NOTES
+    المؤلف: عصام حميد الحفاشي 
+    التاريخ: 2026-06-02
+    الإصدار: 4.0
+    يتطلب: Active Directory Module
+    للتعديل لشركة أخرى: لا يحتاج أي تعديل - يعمل تلقائياً مع أي نطاق
+#>
+
+# ========== تقرير صحة الحسابات الشامل ==========
+
+# 1. الإعدادات
+$ReportDate = Get-Date -Format "yyyy-MM-dd"
+$ExcelPath = "C:\Users\Administrator\Desktop\AccountHealth_$ReportDate.csv"
+$HTMLPath = "C:\Users\Administrator\Desktop\AccountHealth_$ReportDate.html"
+$ActiveDays = 90
+
+Write-Host "========== تقرير صحة الحسابات ==========" -ForegroundColor Cyan
+Write-Host "[تجهيز] جاري جمع البيانات..." -ForegroundColor Yellow
+
+# 2. دالة لاستخراج القسم من DistinguishedName
+function Get-DepartmentFromDN {
+    param($DN)
+    if ($DN -match "OU=([^,]+)") {
+        return $Matches[1]
+    }
+    return "غير محدد"
+}
+
+# 3. جمع البيانات
+$DisabledAccounts = Search-ADAccount -AccountDisabled -UsersOnly | Select-Object Name, SamAccountName, DistinguishedName
+$LockedAccounts = Search-ADAccount -LockedOut -UsersOnly | Select-Object Name, SamAccountName, DistinguishedName
+$ExpiredAccounts = Search-ADAccount -AccountExpired -UsersOnly | Select-Object Name, SamAccountName, DistinguishedName
+$InactiveAccounts = Search-ADAccount -AccountInactive -TimeSpan 90.00:00:00 -UsersOnly | Select-Object Name, SamAccountName, DistinguishedName
+
+$AllEnabledUsers = Get-ADUser -Filter {Enabled -eq $true} -Properties LastLogonDate, SamAccountName, DisplayName, DistinguishedName | Where-Object {
+    $_.SamAccountName -notin @("Administrator", "Guest", "krbtgt") -and
+    $_.LastLogonDate -ne $null -and
+    $_.LastLogonDate -ge (Get-Date).AddDays(-$ActiveDays)
+} | Select-Object DisplayName, SamAccountName, DistinguishedName, LastLogonDate
+
+$NeverLoggedIn = Get-ADUser -Filter {Enabled -eq $true} -Properties LastLogonDate, SamAccountName, DisplayName, DistinguishedName, Created, Title, Department | Where-Object {
+    $_.SamAccountName -notin @("Administrator", "Guest", "krbtgt") -and
+    $_.LastLogonDate -eq $null
+} | Select-Object DisplayName, SamAccountName, DistinguishedName, Created, Title, Department
+
+# 4. إضافة عمود "النوع" لكل فئة
+$DisabledAccounts | ForEach-Object { $_ | Add-Member -NotePropertyName "النوع" -NotePropertyValue "معطل" }
+$LockedAccounts | ForEach-Object { $_ | Add-Member -NotePropertyName "النوع" -NotePropertyValue "مقفل" }
+$ExpiredAccounts | ForEach-Object { $_ | Add-Member -NotePropertyName "النوع" -NotePropertyValue "منتهي الصلاحية" }
+$InactiveAccounts | ForEach-Object { $_ | Add-Member -NotePropertyName "النوع" -NotePropertyValue "غير نشط (90 يوم)" }
+$AllEnabledUsers | ForEach-Object { $_ | Add-Member -NotePropertyName "النوع" -NotePropertyValue "نشط" }
+$NeverLoggedIn | ForEach-Object { $_ | Add-Member -NotePropertyName "النوع" -NotePropertyValue "لم يسجل دخول أبداً" }
+
+# 5. إضافة عمود "القسم" لكل فئة
+$DisabledAccounts | ForEach-Object { $_ | Add-Member -NotePropertyName "القسم" -NotePropertyValue (Get-DepartmentFromDN $_.DistinguishedName) }
+$LockedAccounts | ForEach-Object { $_ | Add-Member -NotePropertyName "القسم" -NotePropertyValue (Get-DepartmentFromDN $_.DistinguishedName) }
+$ExpiredAccounts | ForEach-Object { $_ | Add-Member -NotePropertyName "القسم" -NotePropertyValue (Get-DepartmentFromDN $_.DistinguishedName) }
+$InactiveAccounts | ForEach-Object { $_ | Add-Member -NotePropertyName "القسم" -NotePropertyValue (Get-DepartmentFromDN $_.DistinguishedName) }
+$AllEnabledUsers | ForEach-Object { $_ | Add-Member -NotePropertyName "القسم" -NotePropertyValue (Get-DepartmentFromDN $_.DistinguishedName) }
+$NeverLoggedIn | ForEach-Object { $_ | Add-Member -NotePropertyName "القسم" -NotePropertyValue (Get-DepartmentFromDN $_.DistinguishedName) }
+
+# 6. دمج الكل في تقرير واحد
+$AllIssues = @()
+$AllIssues += $DisabledAccounts
+$AllIssues += $LockedAccounts
+$AllIssues += $ExpiredAccounts
+$AllIssues += $InactiveAccounts
+$AllIssues += $NeverLoggedIn
+
+# 7. إحصائيات سريعة على الشاشة
+Write-Host "`n[إحصائيات سريعة]" -ForegroundColor Yellow
+Write-Host "  ✅ حسابات نشطة           : $($AllEnabledUsers.Count)" -ForegroundColor Green
+Write-Host "  ⚠️  حسابات خاملة          : $($InactiveAccounts.Count)" -ForegroundColor Yellow
+Write-Host "  🆕 لم تسجل دخول أبداً     : $($NeverLoggedIn.Count)" -ForegroundColor DarkCyan
+Write-Host "  ❌ حسابات معطلة           : $($DisabledAccounts.Count)" -ForegroundColor Red
+Write-Host "  📅 حسابات منتهية الصلاحية : $($ExpiredAccounts.Count)" -ForegroundColor Magenta
+Write-Host "  🔒 حسابات مقفلة           : $($LockedAccounts.Count)" -ForegroundColor DarkRed
+Write-Host "  إجمالي المشاكل            : $($AllIssues.Count)" -ForegroundColor White
+
+# 8. تحليل تفصيلي
+Write-Host "`n[تحليل تفصيلي]" -ForegroundColor Cyan
+
+Write-Host "`n  ✅ حسابات نشطة (تستخدم حالياً): $($AllEnabledUsers.Count)" -ForegroundColor Green
+Write-Host "     هؤلاء موظفون يستخدمون حساباتهم بنشاط خلال آخر $ActiveDays يوماً."
+
+Write-Host "`n  ⚠️  حسابات خاملة (موجودة لكنها غير مستخدمة): $($InactiveAccounts.Count)" -ForegroundColor Yellow
+Write-Host "     هؤلاء موظفون موجودون في النظام لكنهم لم يسجلوا دخولهم منذ أكثر من $ActiveDays يوماً."
+
+if ($NeverLoggedIn.Count -gt 0) {
+    Write-Host "`n  🆕 حسابات لم تسجل دخولها أبداً (موظفين جدد لم يحضروا): $($NeverLoggedIn.Count)" -ForegroundColor DarkCyan
+    Write-Host "     تم إنشاء هذه الحسابات لكن أصحابها لم يسجلوا دخولهم ولا مرة."
+}
+
+Write-Host "`n  ❌ حسابات معطلة (موظفون غادروا): $($DisabledAccounts.Count)" -ForegroundColor Red
+Write-Host "     تم تعطيل هذه الحسابات يدوياً. غالباً لموظفين غادروا الشركة."
+
+if ($ExpiredAccounts.Count -gt 0) {
+    Write-Host "`n  📅 حسابات منتهية الصلاحية (عقود مؤقتة): $($ExpiredAccounts.Count)" -ForegroundColor Magenta
+    Write-Host "     هذه الحسابات انتهت صلاحيتها تلقائياً."
+}
+
+if ($LockedAccounts.Count -gt 0) {
+    Write-Host "`n  🔒 حسابات مقفلة (مشاكل تقنية): $($LockedAccounts.Count)" -ForegroundColor DarkRed
+    Write-Host "     تم قفل هذه الحسابات بسبب محاولات دخول خاطئة متكررة."
+}
+
+$ActualEmployees = $AllEnabledUsers.Count + $InactiveAccounts.Count + $NeverLoggedIn.Count
+Write-Host "`n  👥 إجمالي الموظفين المسجلين: $ActualEmployees" -ForegroundColor White
+
+# 9. توصيات
+Write-Host "`n[توصيات]" -ForegroundColor Cyan
+if ($NeverLoggedIn.Count -gt 0) {
+    Write-Host "  🔹 راجع الحسابات التي لم تسجل دخولها أبداً ($($NeverLoggedIn.Count) حساب). راجع HR." -ForegroundColor DarkCyan
+}
+if ($InactiveAccounts.Count -gt 0) {
+    Write-Host "  🔹 راجع الحسابات الخاملة ($($InactiveAccounts.Count) حساب). قد تحتاج لتعطيلها." -ForegroundColor Yellow
+}
+if ($LockedAccounts.Count -gt 0) {
+    Write-Host "  🔹 افتح الحسابات المقفلة ($($LockedAccounts.Count) حساب)." -ForegroundColor DarkRed
+}
+if ($DisabledAccounts.Count -gt 0) {
+    Write-Host "  🔹 راجع الحسابات المعطلة ($($DisabledAccounts.Count) حساب). قد تحتاج لحذفها." -ForegroundColor Red
+}
+
+# 10. توزيع المشاكل حسب الأقسام
+Write-Host "`n[توزيع المشاكل حسب الأقسام]" -ForegroundColor Cyan
+
+if ($AllIssues.Count -gt 0) {
+    $AllIssues | Group-Object -Property القسم | Sort-Object Count -Descending | ForEach-Object {
+        Write-Host "  $($_.Name): $($_.Count) مشكلة" -ForegroundColor White
+        
+        $DeptIssues = $_.Group
+        $Disabled = ($DeptIssues | Where-Object { $_.النوع -eq "معطل" }).Count
+        $Locked = ($DeptIssues | Where-Object { $_.النوع -eq "مقفل" }).Count
+        $Expired = ($DeptIssues | Where-Object { $_.النوع -eq "منتهي الصلاحية" }).Count
+        $Inactive = ($DeptIssues | Where-Object { $_.النوع -eq "غير نشط (90 يوم)" }).Count
+        $Never = ($DeptIssues | Where-Object { $_.النوع -eq "لم يسجل دخول أبداً" }).Count
+        
+        if ($Disabled -gt 0) { Write-Host "    ❌ معطل: $Disabled" -ForegroundColor Red }
+        if ($Locked -gt 0) { Write-Host "    🔒 مقفل: $Locked" -ForegroundColor DarkRed }
+        if ($Expired -gt 0) { Write-Host "    📅 منتهي: $Expired" -ForegroundColor Magenta }
+        if ($Inactive -gt 0) { Write-Host "    ⚠️ خامل: $Inactive" -ForegroundColor Yellow }
+        if ($Never -gt 0) { Write-Host "    🆕 لم يدخل: $Never" -ForegroundColor DarkCyan }
+    }
+} else {
+    Write-Host "  ✅ لا توجد مشاكل في أي قسم." -ForegroundColor Green
+}
+
+# 11. توزيع النشطين حسب الأقسام
+Write-Host "`n[توزيع النشطين حسب الأقسام]" -ForegroundColor Cyan
+if ($AllEnabledUsers.Count -gt 0) {
+    $AllEnabledUsers | Group-Object -Property القسم | Sort-Object Count -Descending | ForEach-Object {
+        Write-Host "  $($_.Name): $($_.Count) نشط" -ForegroundColor Green
+    }
+} else {
+    Write-Host "  لا يوجد حسابات نشطة." -ForegroundColor Yellow
+}
+
+# 12. تصدير إلى Excel (CSV)
+$AllIssues | Export-Csv -Path $ExcelPath -NoTypeInformation -Encoding UTF8
+Write-Host "`n[تم] تصدير تقرير المشاكل إلى Excel: $ExcelPath" -ForegroundColor Green
+
+$ActiveExcelPath = "C:\Users\Administrator\Desktop\ActiveAccounts_$ReportDate.csv"
+$AllEnabledUsers | Export-Csv -Path $ActiveExcelPath -NoTypeInformation -Encoding UTF8
+Write-Host "[تم] تصدير الحسابات النشطة إلى Excel: $ActiveExcelPath" -ForegroundColor Green
+
+# 13. تصدير إلى HTML
+$HTMLHeader = @"
+<!DOCTYPE html>
+<html dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>تقرير صحة الحسابات - $ReportDate</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        h1 { color: #333; text-align: center; }
+        h2 { color: #0066cc; border-bottom: 2px solid #0066cc; }
+        table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
+        th { background-color: #0066cc; color: white; padding: 10px; text-align: right; }
+        td { border: 1px solid #ddd; padding: 8px; text-align: right; }
+        tr:nth-child(even) { background-color: #f2f2f2; }
+        .summary { background-color: #f8f8f8; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
+        .warning { color: red; font-weight: bold; }
+        .success { color: green; font-weight: bold; }
+        .info { color: darkcyan; font-weight: bold; }
+        .footer { text-align: center; color: #666; margin-top: 30px; }
+    </style>
+</head>
+<body>
+    <h1>تقرير صحة الحسابات</h1>
+    <p style="text-align:center">تاريخ التقرير: $ReportDate</p>
+    
+    <div class="summary">
+        <h2>ملخص</h2>
+        <p>حسابات نشطة: <span class="success">$($AllEnabledUsers.Count)</span></p>
+        <p>حسابات خاملة: <span class="warning">$($InactiveAccounts.Count)</span></p>
+        <p>لم تسجل دخول أبداً: <span class="info">$($NeverLoggedIn.Count)</span></p>
+        <p>حسابات معطلة: <span class="warning">$($DisabledAccounts.Count)</span></p>
+        <p>حسابات مقفلة: <span class="warning">$($LockedAccounts.Count)</span></p>
+        <p>حسابات منتهية الصلاحية: <span class="warning">$($ExpiredAccounts.Count)</span></p>
+        <p>إجمالي المشاكل: <span class="warning">$($AllIssues.Count)</span></p>
+    </div>
+"@
+
+$HTMLBody = ""
+
+if ($AllEnabledUsers.Count -gt 0) {
+    $HTMLBody += "<h2>✅ حسابات نشطة (آخر $ActiveDays يوماً)</h2>"
+    $HTMLBody += $AllEnabledUsers | Select-Object DisplayName, SamAccountName, القسم | ConvertTo-Html -Fragment
+}
+if ($InactiveAccounts.Count -gt 0) {
+    $HTMLBody += "<h2>⚠️ حسابات خاملة (أكثر من $ActiveDays يوماً)</h2>"
+    $HTMLBody += $InactiveAccounts | Select-Object Name, SamAccountName, القسم | ConvertTo-Html -Fragment
+}
+if ($NeverLoggedIn.Count -gt 0) {
+    $HTMLBody += "<h2>🆕 حسابات لم تسجل دخولها أبداً</h2>"
+    $HTMLBody += $NeverLoggedIn | Select-Object DisplayName, SamAccountName, القسم | ConvertTo-Html -Fragment
+}
+if ($DisabledAccounts.Count -gt 0) {
+    $HTMLBody += "<h2>❌ حسابات معطلة</h2>"
+    $HTMLBody += $DisabledAccounts | Select-Object Name, SamAccountName, القسم | ConvertTo-Html -Fragment
+}
+if ($LockedAccounts.Count -gt 0) {
+    $HTMLBody += "<h2>🔒 حسابات مقفلة</h2>"
+    $HTMLBody += $LockedAccounts | Select-Object Name, SamAccountName, القسم | ConvertTo-Html -Fragment
+}
+if ($ExpiredAccounts.Count -gt 0) {
+    $HTMLBody += "<h2>📅 حسابات منتهية الصلاحية</h2>"
+    $HTMLBody += $ExpiredAccounts | Select-Object Name, SamAccountName, القسم | ConvertTo-Html -Fragment
+}
+
+$HTMLFooter = @"
+    <div class="footer">
+        <p>تم إنشاء هذا التقرير تلقائياً بواسطة PowerShell</p>
+        <p>© $(Get-Date -Format "yyyy") - قسم تقنية المعلومات</p>
+    </div>
+</body>
+</html>
+"@
+
+$FullHTML = $HTMLHeader + $HTMLBody + $HTMLFooter
+$FullHTML | Out-File -FilePath $HTMLPath -Encoding UTF8
+
+Write-Host "[تم] تصدير إلى HTML: $HTMLPath" -ForegroundColor Green
+Write-Host "[تم] يمكنك فتح ملف HTML في Word مباشرة." -ForegroundColor Cyan
