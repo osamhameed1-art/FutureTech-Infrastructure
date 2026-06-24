@@ -1,0 +1,107 @@
+# ========== مُحدِّث بيانات الموظفين (تفاعلي - مع نافذة Browse) ==========
+
+Write-Host "`n========== مُحدِّث بيانات الموظفين ==========" -ForegroundColor Cyan
+
+# 1. فتح نافذة اختيار الملف (بدلاً من كتابة المسار)
+Add-Type -AssemblyName System.Windows.Forms
+$FileBrowser = New-Object System.Windows.Forms.OpenFileDialog
+$FileBrowser.Title = "اختر ملف CSV الذي يحتوي على تعديلات الموظفين"
+$FileBrowser.Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*"
+$FileBrowser.InitialDirectory = [Environment]::GetFolderPath('Desktop')
+
+if ($FileBrowser.ShowDialog() -eq "OK") {
+    $CSVPath = $FileBrowser.FileName
+    Write-Host "[تم] تم اختيار الملف: $CSVPath" -ForegroundColor Cyan
+} else {
+    Write-Host "[إلغاء] لم تختر ملفاً. انتهى البرنامج." -ForegroundColor Yellow
+    exit
+}
+
+# 2. استيراد ملف التعديلات
+$UsersToUpdate = Import-Csv -Path $CSVPath
+Write-Host "[تم] استيراد $($UsersToUpdate.Count) مستخدم للتعديل." -ForegroundColor Cyan
+
+# 3. عرض معاينة سريعة للتأكيد
+Write-Host "`n[معاينة] أول 3 مستخدمين في الملف:" -ForegroundColor Yellow
+$UsersToUpdate | Select-Object -First 3 | Format-Table SamAccountName, Title, OfficePhone, City
+
+$Confirm = Read-Host "`nهل تريد متابعة التعديل؟ (y/n)"
+if ($Confirm -ne "y") {
+    Write-Host "[إلغاء] تم إلغاء العملية." -ForegroundColor Yellow
+    exit
+}
+
+# 4. خريطة الترجمة (CSV -> AD)
+$PropertyMap = @{
+    'Title'         = 'Title'
+    'OfficePhone'   = 'OfficePhone'
+    'MobilePhone'   = 'MobilePhone'
+    'City'          = 'City'
+    'State'         = 'State'
+    'Department'    = 'Department'
+    'Manager'       = 'Manager'
+    'Description'   = 'Description'
+    'Office'        = 'Office'
+    'Company'       = 'Company'
+    'EmailAddress'  = 'EmailAddress'
+    'PostalCode'    = 'PostalCode'
+}
+
+# 5. متغيرات العد
+$UpdatedCount = 0
+$SkippedCount = 0
+$StartTime = Get-Date
+
+# 6. معالجة كل مستخدم
+foreach ($User in $UsersToUpdate) {
+    $Sam = $User.SamAccountName
+    
+    Write-Host "`n[معالجة] $Sam ..." -ForegroundColor Yellow
+    
+    $ADUser = Get-ADUser -Filter "SamAccountName -eq '$Sam'" -Properties * -ErrorAction SilentlyContinue
+    
+    if (!$ADUser) {
+        Write-Host "  [خطأ] المستخدم '$Sam' غير موجود في AD." -ForegroundColor Red
+        $SkippedCount++
+        continue
+    }
+    
+    $UpdateParams = @{ Identity = $Sam }
+    
+    $CSVColumns = $User.PSObject.Properties.Name
+    foreach ($Column in $CSVColumns) {
+        if ($Column -eq 'SamAccountName') { continue }
+        $Value = $User.$Column
+        if ([string]::IsNullOrWhiteSpace($Value)) { continue }
+        if ($PropertyMap.ContainsKey($Column)) {
+            $ADParam = $PropertyMap[$Column]
+            $UpdateParams[$ADParam] = $Value
+            Write-Host "  [تعديل] $Column -> $Value" -ForegroundColor DarkCyan
+        }
+    }
+    
+    Write-Host "  [قبل] Title: $($ADUser.Title), Phone: $($ADUser.OfficePhone), City: $($ADUser.City)" -ForegroundColor Gray
+    
+    try {
+        Set-ADUser @UpdateParams -ErrorAction Stop
+        Write-Host "  [تم] تم تحديث بيانات $Sam." -ForegroundColor Green
+        $UpdatedCount++
+        
+        $UpdatedUser = Get-ADUser -Identity $Sam -Properties Title, OfficePhone, City
+        Write-Host "  [بعد] Title: $($UpdatedUser.Title), Phone: $($UpdatedUser.OfficePhone), City: $($UpdatedUser.City)" -ForegroundColor Green
+    }
+    catch {
+        Write-Host "  [خطأ] فشل تحديث $Sam : $_" -ForegroundColor Red
+        $SkippedCount++
+    }
+}
+
+# 7. إحصائيات
+$EndTime = Get-Date
+$Duration = ($EndTime - $StartTime).TotalSeconds
+
+Write-Host "`n========== إحصائيات ==========" -ForegroundColor Cyan
+Write-Host "تم التحديث: $UpdatedCount" -ForegroundColor Green
+Write-Host "تم التخطي  : $SkippedCount" -ForegroundColor Yellow
+Write-Host "الوقت المستغرق: $Duration ثانية" -ForegroundColor White
+Write-Host "==============================" -ForegroundColor Cyan
