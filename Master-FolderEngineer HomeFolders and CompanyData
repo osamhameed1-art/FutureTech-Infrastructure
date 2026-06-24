@@ -1,0 +1,131 @@
+# ========== الكود الشامل النهائي: مهندس المجلدات الكامل ==========
+<#
+.SYNOPSIS
+    مهندس المجلدات الآلي (Folder Engineer)
+.DESCRIPTION
+    هذا الكود يقوم بقراءة الهيكل التنظيمي الحالي من Active Directory وإنشاء
+    المجلدات المشتركة تلقائياً. الوظائف التي يقوم بها:
+    1. طلب مسارات HomeFolders و CompanyData وعنوان IP للسيرفر.
+    2. فحص وإنشاء مجلد HomeFolders الرئيسي ومشاركته.
+    3. فحص وإنشاء مجلد CompanyData الرئيسي.
+    4. جلب جميع المستخدمين من Active Directory وتجميعهم حسب أقسامهم.
+    5. إنشاء مجلدات الأقسام في CompanyData ومشاركتها تلقائياً.
+    6. إنشاء مجلدات منزلية لكل موظف داخل HomeFolders.
+    7. ربط القرص الشخصي P: لكل موظف تلقائياً.
+    8. عرض إحصائيات نهائية.
+.NOTES
+    المؤلف: عصام حميد حسين الحفاشي
+    التاريخ: 2026-06-24
+    الإصدار: 1.0
+    يتطلب: Active Directory Module، صلاحيات Domain Admin
+    للتعديل لشركة أخرى: أجب على الأسئلة في البداية فقط.
+#>
+
+# ========== الكود الشامل النهائي: مهندس المجلدات الكامل ==========
+
+
+# 1. طلب المعلومات من المستخدم (مرة واحدة للشركة الجديدة)
+$HomeRoot = Read-Host "أدخل مسار مجلد HomeFolders (مثلاً E:\HomeFolders)"
+$CompanyRoot = Read-Host "أدخل مسار مجلد CompanyData (مثلاً E:\CompanyData)"
+$ServerIP = Read-Host "أدخل عنوان IP للسيرفر (مثلاً 192.168.2.10)"
+$DomainDNS = "TechNova.local"
+
+# 2. فحص وإنشاء مجلد HomeFolders الرئيسي ومشاركته
+Write-Host "`n========== [1] تجهيز HomeFolders ==========" -ForegroundColor Cyan
+if (!(Test-Path -Path $HomeRoot)) {
+    New-Item -Path $HomeRoot -ItemType Directory -Force | Out-Null
+    Write-Host "[تم] إنشاء المجلد: $HomeRoot" -ForegroundColor Green
+} else {
+    Write-Host "[موجود] المجلد: $HomeRoot" -ForegroundColor Yellow
+}
+
+$HomeShareName = "HomeFolders"
+if (!(Get-SmbShare -Name $HomeShareName -ErrorAction SilentlyContinue)) {
+    New-SmbShare -Name $HomeShareName -Path $HomeRoot -FullAccess "Everyone"
+    Write-Host "[تم] إنشاء المشاركة: $HomeShareName" -ForegroundColor Green
+} else {
+    Write-Host "[موجودة] المشاركة: $HomeShareName" -ForegroundColor Yellow
+}
+
+# 3. فحص وإنشاء مجلد CompanyData الرئيسي
+Write-Host "`n========== [2] تجهيز CompanyData ==========" -ForegroundColor Cyan
+if (!(Test-Path -Path $CompanyRoot)) {
+    New-Item -Path $CompanyRoot -ItemType Directory -Force | Out-Null
+    Write-Host "[تم] إنشاء المجلد: $CompanyRoot" -ForegroundColor Green
+} else {
+    Write-Host "[موجود] المجلد: $CompanyRoot" -ForegroundColor Yellow
+}
+
+# 4. جلب جميع المستخدمين من Active Directory وتجميعهم حسب القسم
+Write-Host "`n[فحص] جاري جلب بيانات الموظفين..." -ForegroundColor Cyan
+$AllUsers = Get-ADUser -Filter * -Properties SamAccountName, DistinguishedName | Where-Object { $_.SamAccountName -notin @("Administrator", "Guest", "krbtgt") }
+
+$Departments = @{}
+foreach ($User in $AllUsers) {
+    if ($User.DistinguishedName -match "OU=([^,]+)") {
+        $Dept = $Matches[1]
+        if ($Dept -notin $Departments.Keys) { $Departments[$Dept] = @() }
+        $Departments[$Dept] += $User
+    }
+}
+
+Write-Host "[تم] العثور على $($Departments.Count) قسماً." -ForegroundColor Cyan
+
+# 5. إنشاء مجلدات الأقسام في CompanyData ومشاركتها
+Write-Host "`n========== [3] إنشاء مجلدات CompanyData للأقسام ==========" -ForegroundColor Cyan
+$CreatedComps = 0; $SkippedComps = 0
+
+foreach ($Dept in $Departments.Keys) {
+    $CompFolder = Join-Path -Path $CompanyRoot -ChildPath $Dept
+    $CompShareName = $Dept + "Data"
+    
+    if (!(Test-Path -Path $CompFolder)) {
+        New-Item -Path $CompFolder -ItemType Directory -Force | Out-Null
+        Write-Host "[Company] تم إنشاء مجلد: $Dept" -ForegroundColor Green
+        $CreatedComps++
+    } else {
+        Write-Host "[Company] موجود: $Dept" -ForegroundColor Yellow
+        $SkippedComps++
+    }
+    
+    if (!(Get-SmbShare -Name $CompShareName -ErrorAction SilentlyContinue)) {
+        New-SmbShare -Name $CompShareName -Path $CompFolder -FullAccess "Everyone"
+        Write-Host "[مشاركة] تم إنشاء: $CompShareName" -ForegroundColor Green
+    } else {
+        Write-Host "[مشاركة] موجودة: $CompShareName" -ForegroundColor Yellow
+    }
+}
+
+# 6. إنشاء مجلدات HomeFolders للموظفين وربط P:
+Write-Host "`n========== [4] إنشاء مجلدات HomeFolders للموظفين ==========" -ForegroundColor Cyan
+$CreatedHomes = 0; $SkippedHomes = 0
+
+foreach ($Dept in $Departments.Keys) {
+    $DeptHomeFolder = Join-Path -Path $HomeRoot -ChildPath $Dept
+    if (!(Test-Path -Path $DeptHomeFolder)) {
+        New-Item -Path $DeptHomeFolder -ItemType Directory -Force | Out-Null
+    }
+    
+    foreach ($User in $Departments[$Dept]) {
+        $UserFolder = Join-Path -Path $DeptHomeFolder -ChildPath $User.SamAccountName
+        
+        if (!(Test-Path -Path $UserFolder)) {
+            New-Item -Path $UserFolder -ItemType Directory -Force | Out-Null
+            Write-Host "[Home] تم إنشاء: $($User.SamAccountName)" -ForegroundColor Green
+            $CreatedHomes++
+        } else {
+            $SkippedHomes++
+        }
+        
+        # ربط القرص الشخصي (P:)
+        $HomePath = "\\$ServerIP\$HomeShareName\$Dept\$($User.SamAccountName)"
+        Set-ADUser -Identity $User.SamAccountName -HomeDrive "P:" -HomeDirectory $HomePath
+    }
+}
+
+# 7. إحصائيات نهائية
+Write-Host "`n========== إحصائيات ==========" -ForegroundColor Cyan
+Write-Host "[CompanyData] مجلدات جديدة: $CreatedComps | موجودة: $SkippedComps" -ForegroundColor Green
+Write-Host "[HomeFolders] مجلدات جديدة: $CreatedHomes | موجودة: $SkippedHomes" -ForegroundColor Green
+Write-Host "تم ربط القرص P: لجميع الموظفين." -ForegroundColor Magenta
+Write-Host "==============================" -ForegroundColor Cyan
