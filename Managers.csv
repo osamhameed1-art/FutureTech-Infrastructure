@@ -1,0 +1,6 @@
+Name,Sam,UPN,OU,Group,Title
+Sales Manager,sales.mgr,sales.mgr@FutureTech.com,"OU=Sales,OU=HeadOffice,DC=FutureTech,DC=com",G_Sales,مدير قسم المبيعات
+Finance Manager,finance.mgr,finance.mgr@FutureTech.com,"OU=Finance,OU=HeadOffice,DC=FutureTech,DC=com",G_Finance,مدير قسم المالية
+HR Manager,hr.mgr,hr.mgr@FutureTech.com,"OU=HR,OU=HeadOffice,DC=FutureTech,DC=com",G_HR,مدير قسم الموارد البشرية
+IT Manager,it.mgr,it.mgr@FutureTech.com,"OU=IT,OU=HeadOffice,DC=FutureTech,DC=com",G_IT,مدير قسم تقنية المعلومات
+Marketing Manager,marketing.mgr,marketing.mgr@FutureTech.com,"OU=Marketing,OU=HeadOffice,DC=FutureTech,DC=com",G_Marketing,مدير قسم التسويق
