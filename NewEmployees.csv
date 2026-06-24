@@ -1,0 +1,42 @@
+Name,Sam,UPN,OU,Group,Phone,Title,City
+Yousef Tarek,y.tarek,y.tarek@FutureTech.com,"OU=Sales,OU=HeadOffice,DC=FutureTech,DC=com",G_Sales,,,
+Noura Kamal,n.kamal,n.kamal@FutureTech.com,"OU=Sales,OU=HeadOffice,DC=FutureTech,DC=com",G_Sales,,,
+Hassan Adel,h.adel2,h.adel2@FutureTech.com,"OU=Sales,OU=HeadOffice,DC=FutureTech,DC=com",G_Sales,,,
+Maha Sherif,m.sherif,m.sherif@FutureTech.com,"OU=Sales,OU=HeadOffice,DC=FutureTech,DC=com",G_Sales,,,
+Omar Wael,o.wael,o.wael@FutureTech.com,"OU=Sales,OU=HeadOffice,DC=FutureTech,DC=com",G_Sales,,,
+Lina Fouad,l.fouad2,l.fouad2@FutureTech.com,"OU=Finance,OU=HeadOffice,DC=FutureTech,DC=com",G_Finance,,,
+Yara Nabil,y.nabil,y.nabil@FutureTech.com,"OU=Finance,OU=HeadOffice,DC=FutureTech,DC=com",G_Finance,,,
+Karim Zaki,k.zaki,k.zaki@FutureTech.com,"OU=Finance,OU=HeadOffice,DC=FutureTech,DC=com",G_Finance,,,
+Nada Salem,n.salem,n.salem@FutureTech.com,"OU=Finance,OU=HeadOffice,DC=FutureTech,DC=com",G_Finance,,,
+Tamer Hany,t.hany2,t.hany2@FutureTech.com,"OU=Finance,OU=HeadOffice,DC=FutureTech,DC=com",G_Finance,,,
+Hala Emad,h.emad,h.emad@FutureTech.com,"OU=HR,OU=HeadOffice,DC=FutureTech,DC=com",G_HR,,,
+Wael Osama,w.osama,w.osama@FutureTech.com,"OU=HR,OU=HeadOffice,DC=FutureTech,DC=com",G_HR,,,
+Rasha Khaled,r.khaled,r.khaled@FutureTech.com,"OU=HR,OU=HeadOffice,DC=FutureTech,DC=com",G_HR,,,
+Bassem Lotfy,b.lotfy,b.lotfy@FutureTech.com,"OU=HR,OU=HeadOffice,DC=FutureTech,DC=com",G_HR,,,
+Nermin Galal,n.galal,n.galal@FutureTech.com,"OU=HR,OU=HeadOffice,DC=FutureTech,DC=com",G_HR,,,
+Fadi Hossam,f.hossam,f.hossam@FutureTech.com,"OU=IT,OU=HeadOffice,DC=FutureTech,DC=com",G_IT,,,
+Rania Hazem,r.hazem,r.hazem@FutureTech.com,"OU=IT,OU=HeadOffice,DC=FutureTech,DC=com",G_IT,,,
+Wael Gaber,w.gaber,w.gaber@FutureTech.com,"OU=IT,OU=HeadOffice,DC=FutureTech,DC=com",G_IT,,,
+Dina Lotfy,d.lotfy,d.lotfy@FutureTech.com,"OU=IT,OU=HeadOffice,DC=FutureTech,DC=com",G_IT,,,
+Tamer Fawzy,t.fawzy,t.fawzy@FutureTech.com,"OU=IT,OU=HeadOffice,DC=FutureTech,DC=com",G_IT,,,
+Ahmed Samir,a.samir,a.samir@FutureTech.com,"OU=Sales,OU=HeadOffice,DC=FutureTech,DC=com",G_Sales,0100111222,Sales Executive,Cairo
+Mona Fathi,m.fathi,m.fathi@FutureTech.com,"OU=Sales,OU=HeadOffice,DC=FutureTech,DC=com",G_Sales,,Senior Sales Rep,Alexandria
+Khaled Omar,k.omar,k.omar@FutureTech.com,"OU=Sales,OU=HeadOffice,DC=FutureTech,DC=com",G_Sales,0100111444,,
+Nadia Salah,n.salah,n.salah@FutureTech.com,"OU=Finance,OU=HeadOffice,DC=FutureTech,DC=com",G_Finance,0100111555,Accountant,
+Tarek Hani,t.hani,t.hani@FutureTech.com,"OU=Finance,OU=HeadOffice,DC=FutureTech,DC=com",G_Finance,,Junior Accountant,Mansoura
+Heba Mahmoud,h.mahmoud2,h.mahmoud2@FutureTech.com,"OU=Marketing,OU=HeadOffice,DC=FutureTech,DC=com",G_Marketing,0100222333,Marketing Manager,Cairo
+Rami Hassan,r.hassan,r.hassan@FutureTech.com,"OU=Marketing,OU=HeadOffice,DC=FutureTech,DC=com",G_Marketing,0100222444,Marketing Specialist,Giza
+Dina Sami,d.sami,d.sami@FutureTech.com,"OU=HR,OU=HeadOffice,DC=FutureTech,DC=com",G_HR,,HR Specialist,
+Wael Nour,w.nour,w.nour@FutureTech.com,"OU=HR,OU=HeadOffice,DC=FutureTech,DC=com",G_HR,0100333111,,Mansoura
+Lamia Adel,l.adel,l.adel@FutureTech.com,"OU=IT,OU=HeadOffice,DC=FutureTech,DC=com",G_IT,0100444111,IT Support,Cairo
+
+
+
+
+
+Ta1rek H1ani,1.hani,1.hani@FutureTech.com,"OU=Finance,OU=HeadOffice,DC=FutureTech,DC=com",G_Finance,,Junior Accountant,Mansoura
+H2eba Ma2hmoud,2.mahmoud2,2.mahmoud2@FutureTech.com,"OU=Marketing,OU=HeadOffice,DC=FutureTech,DC=com",G_Marketing,0100222333,Marketing Manager,Cairo
+R3ami Ha3ssan,3.hassan,3.hassan@FutureTech.com,"OU=Marketing,OU=HeadOffice,DC=FutureTech,DC=com",G_Marketing,0100222444,Marketing Specialist,Giza
+Di4na Sa4mi,4.sami,4.sami@FutureTech.com,"OU=HR,OU=HeadOffice,DC=FutureTech,DC=com",G_HR,,HR Specialist,
+Wa5el No5ur,5.nour,5.nour@FutureTech.com,"OU=HR,OU=HeadOffice,DC=FutureTech,DC=com",G_HR,0100333111,,Mansoura
+La6mia Ad6el,6.adel,6.adel@FutureTech.com,"OU=IT,OU=HeadOffice,DC=FutureTech,DC=com",G_IT,0100444111,IT Support,Cairo
