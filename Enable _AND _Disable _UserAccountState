@@ -1,0 +1,184 @@
+<#
+.SYNOPSIS
+    مدير الحسابات الشامل (تعطيل / تفعيل)
+.DESCRIPTION
+    أداة ذكية وتفاعلية لإدارة حالة حسابات المستخدمين في Active Directory.
+    تدعم وضعين للعمل: (1) اختيار تفاعلي من الأقسام مع عرض الحسابات ذات الصلة فقط،
+    و (2) استيراد سريع من ملف CSV.
+    تتضمن تأكيداً قبل التنفيذ، وتقدم إحصائيات مفصلة.
+    الوظائف التي يقوم بها:
+    1. اختيار الإجراء (تعطيل أو تفعيل) بشكل تفاعلي.
+    2. اختيار مصدر المستخدمين (من AD مباشرة أو من ملف CSV).
+    3. عرض الحسابات ذات الصلة فقط (معطلة للتفعيل، مفعلة للتعطيل).
+    4. اختيار متعدد للمستخدمين من أقسام مختلفة.
+    5. مراجعة القائمة وتأكيدها قبل التنفيذ.
+    6. تنفيذ العملية مع عرض تفصيلي للنتائج.
+    7. عرض إحصائيات كاملة (تمت المعالجة، تم التخطي، غير موجودين).
+.NOTES
+    المؤلف: عصام حميد حسين الحفاشي
+    التاريخ: 2026-06-20
+    الإصدار: 3.0 (تفاعلي مع فلترة ذكية)
+    يتطلب: Active Directory Module، صلاحيات Domain Admin
+    للتعديل لشركة أخرى: لا يحتاج أي تعديل - تفاعلي بالكامل
+#>
+
+# ========== مدير الحسابات الشامل (ترتيب: إجراء > مصدر > اختيار > تنفيذ) ==========
+
+Write-Host "`n========== مدير الحسابات الشامل ==========" -ForegroundColor Cyan
+
+# 1. اختيار الإجراء أولاً
+Write-Host "`n[الإجراء] ماذا تريد أن تفعل؟" -ForegroundColor Yellow
+Write-Host "  1 = تعطيل الحسابات (Disable)" -ForegroundColor White
+Write-Host "  2 = تفعيل الحسابات (Enable)" -ForegroundColor White
+$ActionChoice = Read-Host "أدخل رقم الخيار (1 أو 2)"
+if ($ActionChoice -eq "1") { $Action = "Disable" }
+elseif ($ActionChoice -eq "2") { $Action = "Enable" }
+else { Write-Host "[خطأ] اختيار غير صحيح." -ForegroundColor Red; exit }
+
+# 2. اختيار المصدر (قسم أو CSV)
+Write-Host "`n[المصدر] من أين تريد اختيار المستخدمين؟" -ForegroundColor Yellow
+Write-Host "  1 = من الأقسام (Active Directory)" -ForegroundColor White
+Write-Host "  2 = من ملف CSV" -ForegroundColor White
+$SourceChoice = Read-Host "أدخل رقم الخيار (1 أو 2)"
+
+$UsersToProcess = @()
+
+# ========== المصدر 1: من الأقسام ==========
+if ($SourceChoice -eq "1") {
+    Write-Host "`n[بحث] جاري تحميل الأقسام من Active Directory..." -ForegroundColor Cyan
+    
+    $AllUsers = Get-ADUser -Filter * -Properties DistinguishedName, Enabled | Where-Object { $_.SamAccountName -notin @("Administrator","Guest","krbtgt") }
+    
+    # فلترة حسب الإجراء
+    if ($Action -eq "Disable") {
+        $FilteredUsers = $AllUsers | Where-Object { $_.Enabled -eq $true }
+        Write-Host "[فلترة] عرض فقط الحسابات المفعلة." -ForegroundColor Magenta
+    } else {
+        $FilteredUsers = $AllUsers | Where-Object { $_.Enabled -eq $false }
+        Write-Host "[فلترة] عرض فقط الحسابات المعطلة." -ForegroundColor Magenta
+    }
+    
+    if ($FilteredUsers.Count -eq 0) {
+        Write-Host "[معلومات] لا توجد حسابات في هذه الحالة." -ForegroundColor Green
+        exit
+    }
+    
+    # تجميع حسب القسم
+    $Departments = @{}
+    foreach ($U in $FilteredUsers) {
+        if ($U.DistinguishedName -match "OU=([^,]+)") {
+            $Dept = $Matches[1]
+            if ($Dept -notin $Departments.Keys) { $Departments[$Dept] = @() }
+            $Departments[$Dept] += $U
+        }
+    }
+    
+    # حلقة الأقسام (تستمر حتى يختار المستخدم "done")
+    do {
+        Clear-Host
+        Write-Host "`n========== اختيار من الأقسام ==========" -ForegroundColor Cyan
+        Write-Host "[المختارين حالياً: $($UsersToProcess.Count) مستخدم]" -ForegroundColor Yellow
+        Write-Host "[الأقسام المتوفرة]" -ForegroundColor Yellow
+        $DeptIndex = 1
+        $DeptMap = @{}
+        foreach ($Dept in $Departments.Keys) {
+            $DeptMap["$DeptIndex"] = $Dept
+            Write-Host "  $DeptIndex - $Dept ($($Departments[$Dept].Count) مستخدم)" -ForegroundColor White
+            $DeptIndex++
+        }
+        
+        $DeptChoice = Read-Host "`nاختر رقم القسم (أو اكتب 'done' للإنهاء)"
+        if ($DeptChoice -eq "done") { break }
+        if (-not $DeptMap.ContainsKey($DeptChoice)) { Write-Host "[خطأ] رقم غير صحيح." -ForegroundColor Red; Start-Sleep -Seconds 1; continue }
+        
+        $SelectedDept = $DeptMap[$DeptChoice]
+        $DeptUsers = $Departments[$SelectedDept]
+        
+        # حلقة داخلية: اختيار أكثر من مستخدم في نفس القسم
+        do {
+            Clear-Host
+            Write-Host "`n========== قسم $SelectedDept ==========" -ForegroundColor Cyan
+            $UserIndex = 1
+            $UserMap = @{}
+            foreach ($U in $DeptUsers) {
+                $AlreadySelected = if ($UsersToProcess -contains $U.SamAccountName) { " (محدد)" } else { "" }
+                $StatusText = if ($U.Enabled) { "مفعل" } else { "معطل" }
+                Write-Host "  $UserIndex - $($U.Name) ($($U.SamAccountName)) [$StatusText]$AlreadySelected" -ForegroundColor White
+                $UserMap["$UserIndex"] = $U.SamAccountName
+                $UserIndex++
+            }
+            
+            Write-Host "`n[اختيار]" -ForegroundColor Cyan
+            Write-Host "  أدخل رقم | 'all' للجميع | 'done' للخروج من القسم"
+            $UserChoice = Read-Host "`nاختيارك"
+            
+            if ($UserChoice -eq "done") { break }
+            elseif ($UserChoice -eq "all") {
+                foreach ($U in $DeptUsers) { if ($UsersToProcess -notcontains $U.SamAccountName) { $UsersToProcess += $U.SamAccountName } }
+                Write-Host "[تم] إضافة الجميع." -ForegroundColor Green
+            }
+            elseif ($UserMap.ContainsKey($UserChoice)) {
+                $Sel = $UserMap[$UserChoice]
+                if ($UsersToProcess -notcontains $Sel) { $UsersToProcess += $Sel; Write-Host "[تم] إضافة $Sel." -ForegroundColor Green }
+                else { Write-Host "[تنبيه] $Sel محدد." -ForegroundColor Yellow }
+            }
+            else { Write-Host "[خطأ] رقم غير صحيح." -ForegroundColor Red }
+            Start-Sleep -Seconds 1
+        } while ($true)
+        
+        # عرض المختارين
+        Write-Host "`n[المختارين حالياً: $($UsersToProcess.Count)]" -ForegroundColor Cyan
+        $UsersToProcess | ForEach-Object { Write-Host "  - $_" -ForegroundColor White }
+        
+        $AddMore = Read-Host "`nهل تريد إضافة من قسم آخر؟ (y/n)"
+    } while ($AddMore -eq "y")
+}
+
+# ========== المصدر 2: من ملف CSV ==========
+elseif ($SourceChoice -eq "2") {
+    Add-Type -AssemblyName System.Windows.Forms
+    $FileBrowser = New-Object System.Windows.Forms.OpenFileDialog
+    $FileBrowser.Title = "اختر ملف CSV"
+    $FileBrowser.Filter = "CSV files (*.csv)|*.csv"
+    $FileBrowser.InitialDirectory = [Environment]::GetFolderPath('Desktop')
+    
+    if ($FileBrowser.ShowDialog() -eq "OK") {
+        $CSVPath = $FileBrowser.FileName
+        $CSVUsers = Import-Csv -Path $CSVPath
+        foreach ($U in $CSVUsers) { $UsersToProcess += $U.SamAccountName }
+        Write-Host "[تم] استيراد $($UsersToProcess.Count) مستخدم من الملف." -ForegroundColor Cyan
+    } else { Write-Host "[إلغاء] لم تختر ملفاً." -ForegroundColor Yellow; exit }
+}
+
+else { Write-Host "[خطأ] اختيار غير صحيح." -ForegroundColor Red; exit }
+
+# 3. تأكيد نهائي
+Write-Host "`n[ملخص] سيتم $Action عدد $($UsersToProcess.Count) مستخدم." -ForegroundColor Yellow
+$UsersToProcess | ForEach-Object { Write-Host "  - $_" -ForegroundColor White }
+$FinalConfirm = Read-Host "`nاكتب YES للتأكيد والتنفيذ"
+if ($FinalConfirm -ne "YES") { Write-Host "[إلغاء] تم إلغاء العملية." -ForegroundColor Yellow; exit }
+
+# 4. تنفيذ العملية
+$Processed = 0; $Skipped = 0; $NotFound = 0
+foreach ($Sam in $UsersToProcess) {
+    $ADUser = Get-ADUser -Filter "SamAccountName -eq '$Sam'" -Properties Enabled, DisplayName -ErrorAction SilentlyContinue
+    if (!$ADUser) { Write-Host "[خطأ] $Sam غير موجود." -ForegroundColor Red; $NotFound++; continue }
+    
+    if ($Action -eq "Disable" -and -not $ADUser.Enabled) { Write-Host "[تخطي] $Sam معطل مسبقاً." -ForegroundColor Yellow; $Skipped++; continue }
+    if ($Action -eq "Enable" -and $ADUser.Enabled) { Write-Host "[تخطي] $Sam مفعل مسبقاً." -ForegroundColor Yellow; $Skipped++; continue }
+    
+    try {
+        if ($Action -eq "Disable") { Disable-ADAccount -Identity $Sam -ErrorAction Stop }
+        else { Enable-ADAccount -Identity $Sam -ErrorAction Stop }
+        Write-Host "[تم] $Action $Sam" -ForegroundColor Green
+        $Processed++
+    } catch { Write-Host "[خطأ] فشل $Sam : $_" -ForegroundColor Red }
+}
+
+# 5. إحصائيات
+Write-Host "`n========== إحصائيات ==========" -ForegroundColor Cyan
+Write-Host "الإجراء      : $Action" -ForegroundColor White
+Write-Host "تمت المعالجة: $Processed" -ForegroundColor Green
+Write-Host "تم التخطي   : $Skipped" -ForegroundColor Yellow
+Write-Host "غير موجودين : $NotFound" -ForegroundColor Red
+Write-Host "==============================" -ForegroundColor Cyan
